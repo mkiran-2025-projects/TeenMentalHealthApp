@@ -1,0 +1,68 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": "logs:*",
+        "Resource": "arn:aws:logs:*:*:*"
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "comprehend:DetectSentiment",
+          "comprehend:DetectDominantLanguage",
+          "comprehend:DetectSyntax",
+          "comprehend:DetectEntities",
+          "comprehend:DetectKeyPhrases"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "polly:SynthesizeSpeech",
+          "polly:DescribeVoices"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:ListBucket"
+        ],
+        "Resource": [
+          "arn:aws:s3:::teen-mental-health-audio",
+          "arn:aws:s3:::teen-mental-health-audio/*"
+        ]
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "transcribe:StartTranscriptionJob",
+          "transcribe:GetTranscriptionJob"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan"
+        ],
+        "Resource": "arn:aws:dynamodb:*:*:table/TeenMentalHealthConversations"
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "bedrock:InvokeModel"
+        ],
+        "Resource": "*"
+      }
+    ]
+  }

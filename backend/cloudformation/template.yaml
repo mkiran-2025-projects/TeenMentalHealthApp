@@ -1,0 +1,164 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Teen Mental Health Chatbot Resources'
+
+Resources:
+  # API Gateway
+  ChatbotAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: TeenMentalHealthChatbotAPI
+      Description: API for the Teen Mental Health Chatbot
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # API Resources
+  ChatResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ChatbotAPI
+      ParentId: !GetAtt ChatbotAPI.RootResourceId
+      PathPart: 'chat'
+      
+  TranscribeResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ChatbotAPI
+      ParentId: !GetAtt ChatbotAPI.RootResourceId
+      PathPart: 'transcribe'
+
+  # API Methods
+  ChatPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ChatbotAPI
+      ResourceId: !Ref ChatResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ChatbotFunction.Arn}/invocations
+
+  TranscribePostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ChatbotAPI
+      ResourceId: !Ref TranscribeResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TranscribeFunction.Arn}/invocations
+
+  # API Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ChatPostMethod
+      - TranscribePostMethod
+    Properties:
+      RestApiId: !Ref ChatbotAPI
+      StageName: 'prod'
+
+  # Lambda Functions
+  ChatbotFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: TeenMentalHealthChatbot
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/MindCompanionLambdaRole
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            // Lambda function code will be replaced with actual implementation
+            const response = {
+              statusCode: 200,
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+              },
+              body: JSON.stringify({
+                message: 'This is a placeholder response from the chatbot Lambda function.'
+              })
+            };
+            return response;
+          };
+      Timeout: 30
+      MemorySize: 256
+
+  TranscribeFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: TeenMentalHealthTranscribe
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/MindCompanionLambdaRole
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            // Lambda function code will be replaced with actual implementation
+            const response = {
+              statusCode: 200,
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+              },
+              body: JSON.stringify({
+                transcription: 'This is a placeholder transcription from the Lambda function.'
+              })
+            };
+            return response;
+          };
+      Timeout: 30
+      MemorySize: 256
+
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+
+  # DynamoDB Table for Conversation History
+  Resources:
+  ConverationTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ConverationTable
+      AttributeDefinitions:
+        - AttributeName: "ConversationId"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "ConversationId"
+          KeyType: "HASH"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ChatbotAPI}.execute-api.${AWS::Region}.amazonaws.com/prod
+  
+  ChatbotFunctionArn:
+    Description: ARN of the Chatbot Lambda function
+    Value: !GetAtt ChatbotFunction.Arn
+  
+  TranscribeFunctionArn:
+    Description: ARN of the Transcribe Lambda function
+    Value: !GetAtt TranscribeFunction.Arn
+
+  ConversatioTableName:
+    Description: Name of the DynamoDB table for conversations
+    Value: !Ref ConversationTable

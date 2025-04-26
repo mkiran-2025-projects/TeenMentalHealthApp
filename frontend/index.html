@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mind Companion - Anonymous Teen Support</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/aws-sdk/2.1048.0/aws-sdk.min.js"></script>
+</head>
+<body class="bg-gray-100 h-screen">
+    <div class="container mx-auto p-4 h-full flex flex-col">
+        <!-- Header -->
+        <header class="bg-blue-600 text-white p-4 rounded-t-lg">
+            <div class="flex justify-between items-center">
+                <h1 class="text-xl font-bold">Mind Companion</h1>
+                <div class="text-sm">Anonymous Support</div>
+            </div>
+            <p class="text-xs mt-1 opacity-80">Everything shared here stays private</p>
+        </header>
+        
+        <!-- Chat Container -->
+        <div class="flex-grow bg-white p-4 overflow-y-auto" id="chat-container">
+            <div class="flex flex-col space-y-4">
+                <!-- Welcome Message -->
+                <div class="flex items-start">
+                    <div class="bg-blue-100 rounded-lg p-3 max-w-xs sm:max-w-md">
+                        <p>Hi there, I'm Mind Companion. I'm here to listen and support you. How are you feeling today?</p>
+                    </div>
+                </div>
+                <!-- Dynamic chat messages will be inserted here -->
+            </div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="bg-gray-200 p-4 rounded-b-lg">
+            <div class="flex items-center mb-2">
+                <label class="inline-flex items-center mr-4">
+                    <input type="checkbox" id="voice-response-toggle" class="rounded">
+                    <span class="ml-2 text-sm">Voice responses</span>
+                </label>
+                <button id="audio-controls" class="text-xs bg-blue-500 text-white px-2 py-1 rounded hidden">
+                    Pause Audio
+                </button>
+            </div>
+            
+            <div class="flex space-x-2">
+                <textarea id="message-input" class="flex-grow p-2 rounded border" placeholder="Type your message here..."></textarea>
+                <button id="mic-button" class="bg-blue-500 text-white px-4 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                </button>
+                <button id="send-button" class="bg-blue-600 text-white px-4 py-2 rounded">Send</button>
+            </div>
+            
+            <div id="recording-indicator" class="mt-2 text-sm text-red-500 hidden">
+                Recording... Click mic again to stop
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Session ID generation for anonymous tracking
+        const sessionId = 'session_' + Math.random().toString(36).substring(2, 15);
+        console.log('Anonymous session ID:', sessionId);
+        
+        // AWS SDK Configuration - values will be loaded from environment
+        const region = 'us-east-1'; // Change to your region
+        AWS.config.region = region;
+        
+        // Set up AWS SDK with Cognito credentials
+        // This would need to be properly configured with your Cognito Identity Pool
+        // For hackathon purposes, you could use API keys via API Gateway instead
+        
+        // DOM Elements
+        const chatContainer = document.getElementById('chat-container');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const micButton = document.getElementById('mic-button');
+        const voiceResponseToggle = document.getElementById('voice-response-toggle');
+        const recordingIndicator = document.getElementById('recording-indicator');
+        const audioControls = document.getElementById('audio-controls');
+        
+        // Flags
+        let isRecording = false;
+        let audioStream = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let currentAudio = null;
+        
+        // Add event listeners
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        micButton.addEventListener('click', toggleRecording);
+        voiceResponseToggle.addEventListener('change', toggleVoiceResponse);
+        audioControls.addEventListener('click', toggleAudioPlayback);
+        
+        // Function to send message
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message === '') return;
+            
+            // Add user message to chat
+            addMessageToChat(message, 'user');
+            
+            // Clear input
+            messageInput.value = '';
+            
+            // Send to backend
+            callChatbotAPI(message);
+        }
+        
+        // Function to toggle recording
+        function toggleRecording() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        }
+        
+        // Function to start recording
+        async function startRecording() {
+            try {
+                audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(audioStream);
+                audioChunks = [];
+                
+                mediaRecorder.addEventListener('dataavailable', event => {
+                    audioChunks.push(event.data);
+                });
+                
+                mediaRecorder.addEventListener('stop', () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    sendAudioToBackend(audioBlob);
+                });
+                
+                mediaRecorder.start();
+                isRecording = true;
+                recordingIndicator.classList.remove('hidden');
+                micButton.classList.add('bg-red-500');
+                micButton.classList.remove('bg-blue-500');
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                alert('Could not access your microphone. Please check permissions.');
+            }
+        }
+        
+        // Function to stop recording
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                audioStream.getTracks().forEach(track => track.stop());
+                isRecording = false;
+                recordingIndicator.classList.add('hidden');
+                micButton.classList.remove('bg-red-500');
+                micButton.classList.add('bg-blue-500');
+            }
+        }
+        
+        // Function to send audio to backend
+        function sendAudioToBackend(audioBlob) {
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = () => {
+                const base64data = reader.result.split(',')[1];
+                
+                // Send to API Gateway
+                fetch('YOUR_API_GATEWAY_ENDPOINT/transcribe', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        audio: base64data,
+                        sessionId: sessionId
+                    }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.transcription) {
+                        // Add transcribed message to chat
+                        addMessageToChat(data.transcription, 'user');
+                        
+                        // Send to chatbot
+                        callChatbotAPI(data.transcription);
+                    } else {
+                        console.error('Transcription failed:', data.error);
+                        addSystemMessage('Sorry, I couldn\'t understand that. Could you try again?');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error sending audio:', error);
+                    addSystemMessage('There was a problem connecting. Please try again later.');
+                });
+            };
+        }
+        
+        // Function to call chatbot API
+        function callChatbotAPI(message) {
+            // Show typing indicator
+            const typingIndicator = addTypingIndicator();
+            
+            // Call API
+            fetch('YOUR_API_GATEWAY_ENDPOINT/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: message,
+                    sessionId: sessionId,
+                    useVoice: voiceResponseToggle.checked
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Remove typing indicator
+                typingIndicator.remove();
+                
+                // Add bot message to chat
+                addMessageToChat(data.message, 'bot');
+                
+                // Handle voice response
+                if (data.audioUrl && voiceResponseToggle.checked) {
+                    playAudio(data.audioUrl);
+                }
+                
+                // Update sentiment UI if available
+                if (data.sentiment) {
+                    updateSentimentUI(data.sentiment);
+                }
+            })
+            .catch(error => {
+                // Remove typing indicator
+                typingIndicator.remove();
+                
+                console.error('Error calling chatbot API:', error);
+                addSystemMessage('Sorry, there was a problem reaching the service. Please try again.');
+            });
+        }
+        
+        // Function to add message to chat
+        function addMessageToChat(message, sender) {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'flex items-start ' + (sender === 'user' ? 'justify-end' : '');
+            
+            const bubbleElement = document.createElement('div');
+            bubbleElement.className = sender === 'user' 
+                ? 'bg-blue-500 text-white rounded-lg p-3 max-w-xs sm:max-w-md'
+                : 'bg-blue-100 rounded-lg p-3 max-w-xs sm:max-w-md';
+            
+            bubbleElement.innerText = message;
+            messageElement.appendChild(bubbleElement);
+            chatContainer.appendChild(messageElement);
+            
+            // Scroll to bottom
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        // Function to add system message
+        function addSystemMessage(message) {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'flex justify-center';
+            
+            const bubbleElement = document.createElement('div');
+            bubbleElement.className = 'bg-gray-200 text-gray-800 rounded-lg p-2 text-sm max-w-xs sm:max-w-md text-center';
+            
+            bubbleElement.innerText = message;
+            messageElement.appendChild(bubbleElement);
+            chatContainer.appendChild(messageElement);
+            
+            // Scroll to bottom
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        // Function to add typing indicator
+        function addTypingIndicator() {
+            const indicatorElement = document.createElement('div');
+            indicatorElement.className = 'flex items-start';
+            
+            const bubbleElement = document.createElement('div');
+            bubbleElement.className = 'bg-gray-100 rounded-lg p-3 max-w-xs sm:max-w-md';
+            bubbleElement.innerHTML = '<div class="flex space-x-1"><div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div><div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div><div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div></div>';
+            
+            indicatorElement.appendChild(bubbleElement);
+            chatContainer.appendChild(indicatorElement);
+            
+            // Scroll to bottom
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            return indicatorElement;
+        }
+        
+        // Function to play audio
+        function playAudio(url) {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+            }
+            
+            currentAudio = new Audio(url);
+            currentAudio.play();
+            audioControls.classList.remove('hidden');
+            
+            currentAudio.onended = () => {
+                audioControls.classList.add('hidden');
+            };
+        }
+        
+        // Function to toggle audio playback
+        function toggleAudioPlayback() {
+            if (!currentAudio) return;
+            
+            if (currentAudio.paused) {
+                currentAudio.play();
+                audioControls.textContent = 'Pause Audio';
+            } else {
+                currentAudio.pause();
+                audioControls.textContent = 'Resume Audio';
+            }
+        }
+        
+        // Function to toggle voice response
+        function toggleVoiceResponse() {
+            // No immediate action needed, the state is checked when sending messages
+            console.log('Voice responses:', voiceResponseToggle.checked ? 'enabled' : 'disabled');
+        }
+        
+        // Function to update sentiment UI
+        function updateSentimentUI(sentiment) {
+            // This could show a subtle indicator of the detected sentiment
+            console.log('Detected sentiment:', sentiment);
+            // Implementation left as an exercise - could change colors or show an icon
+        }
+    </script>
+</body>
+</html>
